@@ -24,14 +24,20 @@ def get_cat(url):
             is_cat = re.search("^\/.*", item['href'])
             if is_cat:
                 is_exists = cat_col.find_one({"href": item['href']})
+                id_cat = ''
+                if is_exists:
+                    id_cat = is_exists['_id']
                 if not is_exists:
-                    cat_col.insert_one(
+                    new_cat = cat_col.insert_one(
                         {"name": item['title'], "href": item['href']})
-                get_sub_cat(item['href'])
+                    if new_cat:
+                        id_cat = new_cat.inserted_id
+                get_sub_cat(item['href'], id_cat)
+
     print('done!')
 
 
-def get_sub_cat(cat):
+def get_sub_cat(cat, id_cat):
     sub_page = requests.get(url + cat)
     soup_sub_page = BeautifulSoup(sub_page.text, 'html.parser')
     find_sub_cat = soup_sub_page.find(
@@ -41,20 +47,25 @@ def get_sub_cat(cat):
             is_sub_cat = re.search("^\/.*", item['href'])
             if is_sub_cat:
 
-                for num in range(10):
+                for num in range(2):
                     link = item['href']
-
+                    id_sub_cat = ''
                     is_exists = sub_cat_col.find_one(
                         {"href": link})
+                    if is_exists:
+                        id_sub_cat = is_exists['_id']
                     if not is_exists:
-                        sub_cat_col.insert_one(
-                            {"name": item['title'], "href": link})
+                        new_sub_cat = sub_cat_col.insert_one(
+                            {"name": item['title'], "href": link, 'id_cat': id_cat})
+                        if new_sub_cat:
+                            id_sub_cat = new_sub_cat.inserted_id
+
                     if num > 0:
                         link += "-p%s" % num
-                    get_article_by_sub_cat(cat, item['href'], link)
+                    get_article_by_sub_cat(link, id_cat, id_sub_cat)
 
 
-def get_article_by_sub_cat(cat, sub_cat, sub_cat_page):
+def get_article_by_sub_cat(sub_cat_page, id_cat, id_sub_cat):
     sub_page = requests.get(url + sub_cat_page)
     soup_sub_page = BeautifulSoup(sub_page.text, 'html.parser')
     article = soup_sub_page.find_all('article')
@@ -63,10 +74,10 @@ def get_article_by_sub_cat(cat, sub_cat, sub_cat_page):
         if title_new != None:
             link = title_new.find('a')
             if link:
-                get_detail_article(link['href'], cat, sub_cat)
+                get_detail_article(link['href'], id_cat, id_sub_cat)
 
 
-def get_detail_article(link, cat, sub_cat):
+def get_detail_article(link, id_cat, id_sub_cat):
     is_exists = article_col.find_one({"href": link})
     if not is_exists:
         article_detail = requests.get(link)
@@ -93,8 +104,13 @@ def get_detail_article(link, cat, sub_cat):
             for text in content_soup:
                 if text.string:
                     content += text.string + '\n'
+            date = ''
+            date_soup = soup_article_detail.find(
+                'span', attrs={'class': 'date'})
+            if date_soup:
+                date = date_soup.string
             article_col.insert_one({"href": link, "title": title,
-                                   'description': description, 'thumbnail_url': thumbnail_url, 'content': content, 'cat': cat, 'sub_cat': sub_cat})
+                                   'description': description, 'thumbnail_url': thumbnail_url, 'content': content, 'id_cat': id_cat, 'id_sub_cat': id_sub_cat, 'date': date})
 
 
 get_cat(url)
